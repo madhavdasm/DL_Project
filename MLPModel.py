@@ -48,8 +48,8 @@ y_labels = df['Severity'].values
 y = to_categorical(y_labels, num_classes=3)
 
 
-# --- Step 2: Strategic Feature Engineering & Selection ---
-print("Performing strategic feature engineering...")
+# --- Step 2: Advanced Feature Engineering with One-Hot Encoding ---
+print("Performing advanced feature engineering...")
 df['Incident_Year'] = df['Incident_Date'].dt.year
 df['Incident_Month'] = df['Incident_Date'].dt.month
 df['Incident_DayOfWeek'] = df['Incident_Date'].dt.dayofweek
@@ -60,21 +60,25 @@ cat_cols = [
     'Aircaft_Damage_Type',
     'Aircraft_Phase'
 ]
-for col in cat_cols:
-    df[col] = LabelEncoder().fit_transform(df[col].astype(str))
+
+# **ACCURACY BOOST: Switched from LabelEncoder to One-Hot Encoding**
+# This is a much better way to represent categorical data for a neural network.
+print("Applying One-Hot Encoding to categorical features...")
+df_encoded = pd.get_dummies(df, columns=cat_cols, prefix=cat_cols)
 
 df['Aircraft_Age_Days'] = (df['Incident_Date'] - df['Aircaft_First_Flight']).dt.days
 mean_age = df['Aircraft_Age_Days'].mean()
-df['Aircraft_Age_Days'] = df['Aircraft_Age_Days'].fillna(mean_age)
+df_encoded['Aircraft_Age_Days'] = df['Aircraft_Age_Days'].fillna(mean_age)
 
-# **PERFORMANCE BOOST 1: Re-introduce Onboard_Total as a feature**
-# This provides crucial context about the scale of the flight without leaking the direct answer.
 numeric_features_for_model = ['Onboard_Total', 'Ground_Casualties', 'Aircraft_Age_Days', 'Incident_Year', 'Incident_Month', 'Incident_DayOfWeek']
 scaler = StandardScaler()
-df[numeric_features_for_model] = scaler.fit_transform(df[numeric_features_for_model])
+df_encoded[numeric_features_for_model] = scaler.fit_transform(df_encoded[numeric_features_for_model])
 
-features = cat_cols + numeric_features_for_model
-X = df[features]
+# Create the final feature list by combining numeric and the new one-hot encoded columns
+one_hot_cols = [col for col in df_encoded.columns if any(cat_col in col for cat_col in cat_cols)]
+features = numeric_features_for_model + one_hot_cols
+X = df_encoded[features]
+print(f"Total number of features after One-Hot Encoding: {X.shape[1]}")
 
 
 # --- Step 3: Split the Data ---
@@ -82,15 +86,12 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_
 
 
 # --- Handle Class Imbalance ---
-print("Calculating class weights...")
 class_weights = class_weight.compute_class_weight('balanced', classes=np.unique(y_labels), y=y_labels)
 class_weights_dict = dict(enumerate(class_weights))
-print("Class Weights:", class_weights_dict)
 
 
 # --- Step 4: Build a Deeper & More Powerful MLP Model ---
 print("--- Building a Deeper MLP Model ---")
-# **PERFORMANCE BOOST 2: Deeper and wider network**
 model = Sequential([
     Dense(256, activation='relu', input_shape=(X_train.shape[1],)),
     Dropout(0.5),
@@ -111,11 +112,7 @@ model.summary()
 
 
 # --- Use EarlyStopping ---
-early_stopping = EarlyStopping(
-    monitor='val_loss',
-    patience=10, # Increased patience for the larger model
-    restore_best_weights=True
-)
+early_stopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
 
 # --- Step 5: Train the Model ---
 print("\n--- Training the Deeper Model ---")
@@ -154,3 +151,4 @@ plt.legend()
 
 plt.tight_layout()
 plt.show()
+
